@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>时间轴待办 · 鱼骨图</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #0f1117; color: #e0e0e0; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  #meta { color: #888; font-size: 14px; margin-bottom: 20px; }
+  svg { width: 100%; height: auto; display: block; }
+  .spine { stroke: #444; stroke-width: 2; }
+  .rib { stroke-width: 2; }
+  .card { fill: #1a1d27; stroke: #333; stroke-width: 1; rx: 6; }
+  .card-text { font-size: 12px; fill: #ccc; }
+  .card-time { font-size: 10px; fill: #777; }
+  .done .rib { stroke: #4caf50; }
+  .done .card { stroke: #4caf5044; }
+  .pending .rib { stroke: #ffa726; }
+  .blocked .rib { stroke: #ef5350; }
+  .overdue .card { fill: #3e1a1a; stroke: #ef5350; }
+  .milestone .rib { stroke: #42a5f5; stroke-dasharray: 4 3; }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #ffa726; color: #000;
+           padding: 10px 16px; border-radius: 8px; font-size: 13px; display: none; }
+</style>
+</head>
+<body>
+
+<h1 id="title"></h1>
+<div id="meta"></div>
+<svg id="bone"></svg>
+<div id="toast"></div>
+
+<script>
+// ===================== 你只需要改这里 =====================
+const DATA = {
+  goal: "2026年12月毕业设计答辩",
+  deadline: "2026-12-20T09:00",
+  nodes: [
+    { time: "2026-11-03T10:00", title: "查文献 30 篇", type: "task", status: "done", materials: [] },
+    { time: "2026-11-05T18:00", title: "提交开题报告", type: "task", status: "pending",
+      materials: ["开题报告模板.docx", "导师签字页"] },
+    { time: "2026-11-15T12:00", title: "实验数据集", type: "material", status: "pending", materials: [] },
+    { time: "2026-12-01T09:00", title: "初稿完成", type: "milestone", status: "pending",
+      materials: ["论文初稿.pdf"] },
+  ]
+};
+const NOTIFY_MINUTES = 30; // 提前多少分钟提醒
+// =========================================================
+
+const NOW = new Date();
+const dl = new Date(DATA.deadline);
+document.getElementById("title").textContent = DATA.goal;
+document.getElementById("meta").textContent =
+  `截止 ${DATA.deadline.replace("T"," ")} · 剩余 ${Math.ceil((dl-NOW)/86400000)} 天`;
+
+const nodes = DATA.nodes.map(n => ({ ...n, t: new Date(n.time) })).sort((a,b) => a.t - b.t);
+
+// 通知权限 + 到期检查
+if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+function check() {
+  const hits = nodes.filter(n => n.status !== "done" && n.t > NOW && n.t - NOW < NOTIFY_MINUTES*60000);
+  const box = document.getElementById("toast");
+  if (hits.length) { box.style.display = "block"; box.textContent = `⏰ 即将到期：${hits.map(h=>h.title).join("、")}`; }
+  hits.forEach(n => { if (Notification.permission === "granted") new Notification(n.title, { body: n.time }); });
+}
+check(); setInterval(check, 60000);
+
+// 画鱼骨
+const W = Math.max(900, window.innerWidth - 60), H = 340, mid = H / 2, pad = 60;
+const svg = document.getElementById("bone");
+svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+const t0 = Math.min(...nodes.map(n=>n.t), NOW), t1 = dl;
+const span = t1 - t0 || 1;
+const xOf = t => pad + (t - t0) / span * (W - pad * 2);
+
+let s = `<line class="spine" x1="${pad}" y1="${mid}" x2="${W-pad}" y2="${mid}"/>`;
+s += `<text x="${W-pad}" y="${mid+4}" fill="#666" font-size="11">截止</text>`;
+
+nodes.forEach((n, i) => {
+  const x = xOf(n.t), up = i % 2 === 0, yEnd = up ? mid - 70 : mid + 70;
+  const cls = n.status === "done" ? "done" : n.status === "blocked" ? "blocked" :
+              (n.t < NOW ? "overdue pending" : "pending") + (n.type === "milestone" ? " milestone" : "");
+  s += `<g class="${cls}">`;
+  s += `<line class="rib" x1="${x}" y1="${mid}" x2="${x+10}" y2="${yEnd}"/>`;
+  const cx = x + 16, cy = up ? yEnd - 22 : yEnd + 4;
+  s += `<rect class="card" x="${cx}" y="${up?cy:cy-18}" width="130" height="36"/>`;
+  s += `<text class="card-text" x="${cx+6}" y="${cy+14}">${n.status==="done"?"✅ ":""}${n.title}</text>`;
+  s += `<text class="card-time" x="${cx+6}" y="${cy+28}">${n.time.slice(5,16).replace("T"," ")} · ${n.type}`;
+  if (n.materials.length) s += ` · 材料${n.materials.length}项`;
+  s += `</text></g>`;
+});
+svg.innerHTML = s;
+</script>
+</body>
+</html>
